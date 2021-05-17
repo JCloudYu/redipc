@@ -1,0 +1,14 @@
+{
+	"name": "redipc",
+	"version": "0.0.1",
+	"description": "An inter-process communication library that is based on RED",
+	"main": "index.js",
+	"scripts": {
+		
+	},
+	"keywords": [
+		"IPC"
+	],
+	"author": "JCloudYu",
+	"license": "ISC"
+}
