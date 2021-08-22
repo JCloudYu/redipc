@@ -2,7 +2,7 @@
 	"name": "redipc",
 	"version": "0.0.1",
 	"description": "An inter-process communication library that is based on RED",
-	"main": "index.js",
+	"main": "./dist/redipc.js",
 	"scripts": {},
 	"keywords": [
 		"IPC"
@@ -10,8 +10,12 @@
 	"author": "JCloudYu",
 	"license": "ISC",
 	"dependencies": {
-		"beson": "^3.0.3",
+		"beson": "^3.1.1",
 		"redis": "^3.1.2",
-		"trimid": "^2.1.0"
+		"trimid": "3.1"
+	},
+	"devDependencies": {
+		"@types/node": "^16.4.11",
+		"@types/redis": "^2.8.31"
 	}
 }

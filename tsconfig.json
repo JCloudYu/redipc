@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"target": "ES6",
+		"module": "CommonJS",
+		"allowJs": false,
+		"checkJs": false,
+		"removeComments": true,
+		"strict": true
+	},
+	"exclude": [ "node_modules" ]
+}
