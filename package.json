@@ -1,9 +1,11 @@
 {
 	"name": "redipc",
-	"version": "0.9.1",
+	"version": "0.9.2",
 	"description": "An inter-process communication library that is based on RED",
 	"main": "./dist/redipc.js",
-	"scripts": {},
+	"scripts": {
+		"build": "tsc -d"
+	},
 	"keywords": [
 		"IPC"
 	],
