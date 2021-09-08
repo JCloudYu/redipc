@@ -1,6 +1,6 @@
 {
 	"name": "redipc",
-	"version": "0.9.2",
+	"version": "0.9.3",
 	"description": "An inter-process communication library that is based on RED",
 	"main": "./dist/redipc.js",
 	"scripts": {
