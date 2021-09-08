@@ -8,7 +8,7 @@ declare type REDIPCInitOptions = {
     redis: {
         uri: string;
     };
-    channels: string[];
+    channels?: string[];
 };
 declare type REDISErrorDescriptor = {
     code?: string;

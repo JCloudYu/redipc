@@ -351,7 +351,7 @@ async function REDISPublish(client:REDIS.RedisClient, channel:string, value:stri
 }
 async function REDISRPush(client:REDIS.RedisClient, slot_id:string, ...data:(string|Buffer|Uint8Array|ArrayBuffer)[]):Promise<number>{
 	return new Promise((resolve, reject)=>{
-		const set_data = [];
+		const set_data:any[] = [];
 		for(const raw_data of data) {
 			if ( raw_data instanceof Uint8Array ) {
 				set_data.push(Buffer.from(raw_data));
