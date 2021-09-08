@@ -18,7 +18,7 @@ interface CallbackTask extends FlattendPromise<any> {
 };
 type REDIPCInitOptions = {
 	redis: {uri:string},
-	channels: string[]
+	channels?: string[]
 };
 type REDIPCPrivates = {
 	response_box_id:string,
@@ -151,7 +151,7 @@ export default class REDIPC extends Events.EventEmitter {
 		return Promise.resolve().then(async()=>{
 			const inst = new REDIPC();
 			const {redis, channels:_channels} = options;
-			const channels = _channels.slice(0);
+			const channels = Array.isArray(_channels) ? _channels.slice(0) : [];
 			channels.push(inst.id);
 
 			
@@ -191,7 +191,7 @@ function HandleRequest(this:REDIPC, channel:string):Promise<void> {
 
 
 			const result = Beson.Deserialize(data);
-			if ( result === null || Object(result) !== result ) continue;
+			if ( result === null || result === undefined || Object(result) !== result ) continue;
 
 			const {id, src, func, args} = result;
 			if ( typeof id !== "string" || typeof src !== "string" || typeof func !== "string" || !Array.isArray(args) ) continue;
@@ -257,8 +257,8 @@ function HandleResponse(this:REDIPC):Promise<void> {
 			if ( !data ) return;
 
 			const result = Beson.Deserialize(data);
+			if ( result === null || result === undefined || Object(result) !== result ) continue;
 
-			if ( result === null || Object(result) !== result ) continue;
 			const {id, err, res} = result;
 
 			const task = task_map.get(id);

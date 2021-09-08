@@ -120,7 +120,7 @@ class REDIPC extends Events.EventEmitter {
             return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {
                 const inst = new REDIPC();
                 const { redis, channels: _channels } = options;
-                const channels = _channels.slice(0);
+                const channels = Array.isArray(_channels) ? _channels.slice(0) : [];
                 channels.push(inst.id);
                 const _REDIPC = __REDIPC.get(inst);
                 const { response_box_id, timeout } = _REDIPC;
@@ -153,7 +153,7 @@ function HandleRequest(channel) {
             if (!data)
                 return;
             const result = Beson.Deserialize(data);
-            if (result === null || Object(result) !== result)
+            if (result === null || result === undefined || Object(result) !== result)
                 continue;
             const { id, src, func, args } = result;
             if (typeof id !== "string" || typeof src !== "string" || typeof func !== "string" || !Array.isArray(args))
@@ -208,7 +208,7 @@ function HandleResponse() {
             if (!data)
                 return;
             const result = Beson.Deserialize(data);
-            if (result === null || Object(result) !== result)
+            if (result === null || result === undefined || Object(result) !== result)
                 continue;
             const { id, err, res } = result;
             const task = task_map.get(id);
