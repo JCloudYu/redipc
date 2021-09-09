@@ -63,6 +63,7 @@ class REDIPC extends Events.EventEmitter {
             inst_id = TrimId.NEW;
         }
         __REDIPC.set(this, {
+            silent: false,
             response_box_id: `_redipc.${inst_id.toString(32)}`,
             client: null,
             pubsub: null,
@@ -119,10 +120,11 @@ class REDIPC extends Events.EventEmitter {
             }
             return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {
                 const inst = new REDIPC();
-                const { redis, channels: _channels } = options;
+                const { redis, channels: _channels, silent } = options;
                 const channels = Array.isArray(_channels) ? _channels.slice(0) : [];
                 channels.push(inst.id);
                 const _REDIPC = __REDIPC.get(inst);
+                _REDIPC.silent = !!silent;
                 const { response_box_id, timeout } = _REDIPC;
                 _REDIPC.client = REDIS.createClient({
                     url: redis.uri, detect_buffers: true
@@ -146,7 +148,7 @@ class REDIPC extends Events.EventEmitter {
 exports.default = REDIPC;
 ;
 function HandleRequest(channel) {
-    const { call_map, client, timeout } = __REDIPC.get(this);
+    const { call_map, client, timeout, silent } = __REDIPC.get(this);
     return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {
         for (let i = 0; i < BATCH_COUNT; i++) {
             const data = yield REDISLPop(client, Buffer.from(channel));
@@ -177,6 +179,8 @@ function HandleRequest(channel) {
                 yield REDISPublish(client, src, id);
             }))
                 .catch((e) => __awaiter(this, void 0, void 0, function* () {
+                if (!silent)
+                    console.error(e);
                 const error = {};
                 if (e instanceof Error) {
                     error.code = e.code || 'exec-error';

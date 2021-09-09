@@ -9,18 +9,19 @@ declare type REDIPCInitOptions = {
         uri: string;
     };
     channels?: string[];
+    silent?: boolean;
 };
 declare type REDISErrorDescriptor = {
     code?: string;
     message?: string;
-} & AnyObject & Error;
+} & AnyObject;
 declare type HandlerMap = {
     [func: string]: AnyFunction;
 };
 export declare class REDISError extends Error {
     [key: string]: any;
     readonly code: string;
-    constructor(err_desc: REDISErrorDescriptor);
+    constructor(err_desc: REDISErrorDescriptor | Error);
 }
 export default class REDIPC extends Events.EventEmitter {
     constructor(init_inst_id?: string);

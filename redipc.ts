@@ -18,9 +18,11 @@ interface CallbackTask extends FlattendPromise<any> {
 };
 type REDIPCInitOptions = {
 	redis: {uri:string},
-	channels?: string[]
+	channels?: string[];
+	silent?: boolean;
 };
 type REDIPCPrivates = {
+	silent:boolean,
 	response_box_id:string,
 	client:REDIS.RedisClient|null,
 	pubsub:REDIS.RedisClient|null,
@@ -31,7 +33,7 @@ type REDIPCPrivates = {
 type REDISErrorDescriptor = {
 	code?:string;
 	message?:string;
-} & AnyObject & Error;
+} & AnyObject;
 type HandlerMap = {[func:string]:AnyFunction};
 
 
@@ -43,7 +45,7 @@ export class REDISError extends Error {
 	[key:string]:any;
 	
 	readonly code:string;
-	constructor(err_desc:REDISErrorDescriptor) {
+	constructor(err_desc:REDISErrorDescriptor|Error) {
 		if ( Object(err_desc) !== err_desc ) {
 			throw new Error("REDISError constructor accept only errors or error descriptors!");
 		}
@@ -87,6 +89,7 @@ export default class REDIPC extends Events.EventEmitter {
 		}
 
 		__REDIPC.set(this, {
+			silent:false,
 			response_box_id: `_redipc.${inst_id.toString(32)}`,
 			client:null,
 			pubsub:null,
@@ -150,13 +153,15 @@ export default class REDIPC extends Events.EventEmitter {
 		
 		return Promise.resolve().then(async()=>{
 			const inst = new REDIPC();
-			const {redis, channels:_channels} = options;
+			const {redis, channels:_channels, silent} = options;
 			const channels = Array.isArray(_channels) ? _channels.slice(0) : [];
 			channels.push(inst.id);
 
 			
 			
 			const _REDIPC = __REDIPC.get(inst)!;
+			_REDIPC.silent = !!silent;
+
 			const {response_box_id, timeout} = _REDIPC;
 			_REDIPC.client = REDIS.createClient({
 				url:redis.uri, detect_buffers:true
@@ -182,7 +187,7 @@ export default class REDIPC extends Events.EventEmitter {
 };
 
 function HandleRequest(this:REDIPC, channel:string):Promise<void> {
-	const {call_map, client, timeout} = __REDIPC.get(this)!;
+	const {call_map, client, timeout, silent} = __REDIPC.get(this)!;
 
 	return Promise.resolve().then(async()=>{
 		for(let i=0; i<BATCH_COUNT; i++) {
@@ -219,6 +224,8 @@ function HandleRequest(this:REDIPC, channel:string):Promise<void> {
 				await REDISPublish(client!, src, id);
 			})
 			.catch(async(e)=>{
+				if ( !silent ) console.error(e);
+
 				const error:AnyObject = {};
 				if ( e instanceof Error ) {
 					// @ts-ignore
