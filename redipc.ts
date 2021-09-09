@@ -50,6 +50,7 @@ export class REDISError extends Error {
 			throw new Error("REDISError constructor accept only errors or error descriptors!");
 		}
 
+		// @ts-ignore
 		let {code, message, ...additional} = err_desc;
 		if ( typeof message !== "string" ) {
 			message = "Unkown error";
