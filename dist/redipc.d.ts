@@ -7,8 +7,10 @@ declare type AnyFunction = (...args: any[]) => void;
 declare type REDIPCInitOptions = {
     redis: {
         uri: string;
+        [key: string]: any;
     };
     channels?: string[];
+    timeout?: number;
     silent?: boolean;
 };
 declare type REDISErrorDescriptor = {
@@ -21,14 +23,25 @@ declare type HandlerMap = {
 export declare class REDISError extends Error {
     [key: string]: any;
     readonly code: string;
-    constructor(err_desc: REDISErrorDescriptor | Error);
+    constructor(err_desc: REDISErrorDescriptor);
+}
+export declare class REDISTimeoutError extends REDISError {
+    readonly id: string;
+    readonly channel: string;
+    readonly func: string;
+    readonly timestamp: number;
+    constructor(msg_id: string, channel: string, func: string, timestamp: number);
 }
 export default class REDIPC extends Events.EventEmitter {
     constructor(init_inst_id?: string);
     get id(): string;
     get connected(): boolean;
+    set timeout(second: number);
+    get timeout(): number;
+    close(): Promise<any[]>;
     register(func: string | HandlerMap, handler?: AnyFunction): REDIPC;
     remoteCall(channel: string, func: string, ...args: any[]): Promise<any>;
+    remoteEvent(channel: string, event: string, ...args: any[]): Promise<void>;
     static init(options: REDIPCInitOptions): Promise<REDIPC>;
 }
 export {};

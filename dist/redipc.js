@@ -20,7 +20,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REDISError = void 0;
+exports.REDISTimeoutError = exports.REDISError = void 0;
 const Events = require("events");
 const Beson = require("beson");
 const REDIS = require("redis");
@@ -46,7 +46,23 @@ class REDISError extends Error {
 }
 exports.REDISError = REDISError;
 ;
+class REDISTimeoutError extends REDISError {
+    constructor(msg_id, channel, func, timestamp) {
+        super({
+            code: 'timeout-error',
+            message: `Request timeout when invoking \`${channel}\`::\`${func}\``
+        });
+        this.id = msg_id;
+        this.channel = channel;
+        this.func = func;
+        this.timestamp = timestamp;
+    }
+}
+exports.REDISTimeoutError = REDISTimeoutError;
+;
 const BATCH_COUNT = 25;
+const DEFAULT_TIMEOUT_DURATION = 30 * 1000;
+const NULL_BESON = Beson.Serialize(null);
 const __REDIPC = new WeakMap();
 class REDIPC extends Events.EventEmitter {
     constructor(init_inst_id) {
@@ -69,7 +85,9 @@ class REDIPC extends Events.EventEmitter {
             pubsub: null,
             task_map: new Map(),
             call_map: new Map(),
-            timeout: ThrottledTimeout()
+            channels: [],
+            timeout: ThrottledTimeout(),
+            timeout_dur: DEFAULT_TIMEOUT_DURATION
         });
     }
     get id() {
@@ -78,6 +96,27 @@ class REDIPC extends Events.EventEmitter {
     get connected() {
         const { client } = __REDIPC.get(this);
         return client === null ? false : client.connected;
+    }
+    set timeout(second) {
+        const _REDIPC = __REDIPC.get(this);
+        _REDIPC.timeout_dur = (second <= 0 ? 0 : second) * 1000;
+    }
+    get timeout() {
+        return __REDIPC.get(this).timeout_dur;
+    }
+    close() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { client, pubsub, timeout } = __REDIPC.get(this);
+            const promises = [];
+            if (client !== null && client.connected) {
+                promises.push(client.quit());
+            }
+            if (pubsub !== null && pubsub.connected) {
+                promises.push(pubsub.quit());
+            }
+            timeout.clear();
+            return Promise.all(promises);
+        });
     }
     register(func, handler) {
         const { call_map } = __REDIPC.get(this);
@@ -98,19 +137,35 @@ class REDIPC extends Events.EventEmitter {
     }
     remoteCall(channel, func, ...args) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { response_box_id, client, task_map } = __REDIPC.get(this);
+            const { response_box_id, client, task_map, timeout_dur } = __REDIPC.get(this);
             if (!client)
                 throw new Error("REDIPC instance is not initialized yet!");
             const id = TrimId.NEW.toString(32);
             const timestamp = Date.now();
-            const call_job = Object.assign({ id, time: timestamp }, GenPromise());
+            const call_job = Object.assign({ id, time: timestamp, timeout: null }, GenPromise());
             task_map.set(id, call_job);
             yield REDISRPush(client, channel, Beson.Serialize({
                 id, src: response_box_id,
                 func, args, timestamp
             }));
             yield REDISPublish(client, channel, id);
+            call_job.timeout = setTimeout(() => {
+                task_map.delete(id);
+                call_job.reject(new REDISTimeoutError(id, channel, func, timestamp));
+            }, timeout_dur);
             return call_job.promise;
+        });
+    }
+    remoteEvent(channel, event, ...args) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { response_box_id, client, task_map } = __REDIPC.get(this);
+            if (!client)
+                throw new Error("REDIPC instance is not initialized yet!");
+            const event_info = {
+                id: TrimId.NEW.toString(32), src: response_box_id,
+                evt: event, args, timestamp: Date.now()
+            };
+            yield REDISPublish(client, channel, Beson.Serialize(event_info));
         });
     }
     static init(options) {
@@ -122,24 +177,30 @@ class REDIPC extends Events.EventEmitter {
                 const inst = new REDIPC();
                 const { redis, channels: _channels, silent } = options;
                 const channels = Array.isArray(_channels) ? _channels.slice(0) : [];
-                channels.push(inst.id);
+                channels.unshift(inst.id);
                 const _REDIPC = __REDIPC.get(inst);
                 _REDIPC.silent = !!silent;
-                const { response_box_id, timeout } = _REDIPC;
-                _REDIPC.client = REDIS.createClient({
-                    url: redis.uri, detect_buffers: true
+                _REDIPC.channels = channels;
+                if (typeof options.timeout === "number") {
+                    inst.timeout = options.timeout;
+                }
+                const { uri: redis_uri, detect_buffers: _ } = redis;
+                const { timeout, response_box_id } = _REDIPC;
+                const client = _REDIPC.client = REDIS.createClient({
+                    url: redis_uri, detect_buffers: true
                 });
-                const client = _REDIPC.pubsub = _REDIPC.client.duplicate();
-                client.on('message_buffer', (channel, data) => {
-                    channel = channel.toString('utf8');
-                    if (channel === response_box_id) {
-                        timeout(HandleResponse.bind(inst), 0);
-                    }
-                    else {
-                        timeout(HandleRequest.bind(inst, channel), 0);
-                    }
+                const sub_client = _REDIPC.pubsub = _REDIPC.client.duplicate();
+                sub_client.on('message_buffer', (_, data) => {
+                    const channel_data = Beson.Deserialize(data);
+                    timeout(() => __awaiter(this, void 0, void 0, function* () {
+                        if (channel_data !== undefined && channel_data !== null) {
+                            HandleEvent.call(inst, channel_data);
+                        }
+                        yield HandleMessage.call(inst);
+                    }), 0);
                 });
-                yield REDISSubscribe(client, channels);
+                yield REDISSubscribe(sub_client, channels);
+                setTimeout(() => REDISPublish(client, response_box_id, NULL_BESON), 100);
                 return inst;
             }));
         });
@@ -147,86 +208,107 @@ class REDIPC extends Events.EventEmitter {
 }
 exports.default = REDIPC;
 ;
-function HandleRequest(channel) {
-    const { call_map, client, timeout, silent } = __REDIPC.get(this);
+function HandleMessage() {
+    const { client, response_box_id, timeout, channels } = __REDIPC.get(this);
     return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {
         for (let i = 0; i < BATCH_COUNT; i++) {
-            const data = yield REDISLPop(client, Buffer.from(channel));
-            if (!data)
-                return;
-            const result = Beson.Deserialize(data);
-            if (result === null || result === undefined || Object(result) !== result)
-                continue;
-            const { id, src, func, args } = result;
-            if (typeof id !== "string" || typeof src !== "string" || typeof func !== "string" || !Array.isArray(args))
-                continue;
-            const handler = call_map.get(func);
-            if (!handler) {
-                yield REDISRPush(client, src, Beson.Serialize({
-                    id, err: {
-                        code: 'error#func-undefined',
-                        message: `Requested function '${func}' is not defined`,
-                        func
-                    }
-                }));
-                yield REDISPublish(client, src, id);
-                continue;
-            }
-            Promise.resolve()
-                .then(() => handler(...args))
-                .then((result) => __awaiter(this, void 0, void 0, function* () {
-                yield REDISRPush(client, src, Beson.Serialize({ id, res: result }));
-                yield REDISPublish(client, src, id);
-            }))
-                .catch((e) => __awaiter(this, void 0, void 0, function* () {
-                if (!silent)
-                    console.error(e);
-                const error = {};
-                if (e instanceof Error) {
-                    error.code = e.code || 'exec-error';
-                    error.message = e.message;
-                    Object.assign(error, e);
+            let proc_data_count = 0;
+            for (const channel of channels) {
+                const data = yield REDISLPop(client, Buffer.from(channel));
+                if (!data)
+                    continue;
+                proc_data_count++;
+                const result = Beson.Deserialize(data);
+                if (result === null || result === undefined || Object(result) !== result)
+                    continue;
+                const { id, func, args, err, res } = result;
+                if (typeof id !== "string")
+                    continue;
+                if (func !== undefined && args !== undefined) {
+                    yield HandleRequest.call(this, result);
                 }
-                else if (Object(e) === e) {
-                    error.code = e.code || 'exec-error';
-                    error.message = e.message || 'Unexpected execution error!';
-                    Object.assign(error, e);
+                else if ((err !== undefined || res !== undefined) && response_box_id === channel) {
+                    yield HandleResponse.call(this, result);
                 }
                 else {
-                    error.code = 'exec-error';
-                    error.message = 'Unexpected execution error!';
-                    error._detail = e;
+                    continue;
                 }
-                yield REDISRPush(client, src, Beson.Serialize({ id, err: error }));
-                yield REDISPublish(client, src, id);
-            }));
+            }
+            if (proc_data_count === 0)
+                return;
         }
-        timeout(HandleRequest.bind(this, channel), 0);
+        timeout(HandleMessage.bind(this), 0);
     })).catch((e) => console.error(e));
 }
-function HandleResponse() {
-    const { task_map, client, response_box_id, timeout } = __REDIPC.get(this);
-    return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {
-        for (let i = 0; i < BATCH_COUNT; i++) {
-            const data = yield REDISLPop(client, Buffer.from(response_box_id));
-            if (!data)
-                return;
-            const result = Beson.Deserialize(data);
-            if (result === null || result === undefined || Object(result) !== result)
-                continue;
-            const { id, err, res } = result;
-            const task = task_map.get(id);
-            if (!task)
-                continue;
-            const { resolve, reject } = task;
-            if (err !== undefined) {
-                reject(new REDISError(err));
-                continue;
-            }
-            resolve(res);
+function HandleRequest(result) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { call_map, client, silent, timeout_dur } = __REDIPC.get(this);
+        const { id, src, func, args, timestamp } = result;
+        if (typeof id !== "string" || typeof src !== "string" || typeof func !== "string" || !Array.isArray(args) || typeof timestamp !== "number")
+            return;
+        if ((Date.now() - timestamp) > timeout_dur)
+            return;
+        const handler = call_map.get(func);
+        if (!handler) {
+            yield REDISRPush(client, src, Beson.Serialize({
+                id, err: {
+                    code: 'error#func-undefined',
+                    message: `Requested function '${func}' is not defined`,
+                    func
+                }
+            }));
+            yield REDISPublish(client, src, id);
+            return;
         }
-        timeout(HandleResponse.bind(this), 0);
-    }));
+        return Promise.resolve()
+            .then(() => handler(...args))
+            .then((result) => __awaiter(this, void 0, void 0, function* () {
+            yield REDISRPush(client, src, Beson.Serialize({ id, res: result }));
+            yield REDISPublish(client, src, id);
+        }))
+            .catch((e) => __awaiter(this, void 0, void 0, function* () {
+            if (!silent)
+                console.error(e);
+            const error = {};
+            if (e instanceof Error) {
+                error.code = e.code || 'exec-error';
+                error.message = e.message;
+                Object.assign(error, e);
+            }
+            else if (Object(e) === e) {
+                error.code = e.code || 'exec-error';
+                error.message = e.message || 'Unexpected execution error!';
+                Object.assign(error, e);
+            }
+            else {
+                error.code = 'exec-error';
+                error.message = 'Unexpected execution error!';
+                error._detail = e;
+            }
+            yield REDISRPush(client, src, Beson.Serialize({ id, err: error }));
+            yield REDISPublish(client, src, id);
+        }));
+    });
+}
+function HandleResponse(result) {
+    const { task_map } = __REDIPC.get(this);
+    const { id, err, res } = result;
+    const task = task_map.get(id);
+    if (!task)
+        return;
+    task_map.delete(id);
+    if (task.timeout) {
+        clearTimeout(task.timeout);
+        task.timeout = null;
+    }
+    const { resolve, reject } = task;
+    err ? reject(new REDISError(err)) : resolve(res);
+}
+function HandleEvent(evt_data) {
+    const { id, src, evt, args } = evt_data;
+    if (typeof id !== "string" || typeof src !== "string" || typeof evt !== "string" || !Array.isArray(args))
+        return;
+    this.emit(evt, { event: evt, id, src }, ...args);
 }
 function GenPromise() {
     const p = {};
