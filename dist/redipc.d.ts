@@ -39,7 +39,8 @@ export default class REDIPC extends Events.EventEmitter {
     set timeout(second: number);
     get timeout(): number;
     close(): Promise<any[]>;
-    register(func: string | HandlerMap, handler?: AnyFunction): REDIPC;
+    register(map: HandlerMap): REDIPC;
+    register(func: string, handler: AnyFunction): REDIPC;
     remoteCall(channel: string, func: string, ...args: any[]): Promise<any>;
     remoteEvent(channel: string, event: string, ...args: any[]): Promise<void>;
     static init(options: REDIPCInitOptions): Promise<REDIPC>;

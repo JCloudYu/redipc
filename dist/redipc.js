@@ -224,10 +224,10 @@ function HandleMessage() {
                 const { id, func, args, err, res } = result;
                 if (typeof id !== "string")
                     continue;
-                if (func !== undefined && args !== undefined) {
+                if (func !== undefined || args !== undefined) {
                     yield HandleRequest.call(this, result);
                 }
-                else if ((err !== undefined || res !== undefined) && response_box_id === channel) {
+                else if (response_box_id === channel) {
                     yield HandleResponse.call(this, result);
                 }
                 else {

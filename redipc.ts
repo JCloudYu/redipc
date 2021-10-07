@@ -164,6 +164,8 @@ export default class REDIPC extends Events.EventEmitter {
 
 		return Promise.all(promises);
 	}
+	register(map:HandlerMap):REDIPC;
+	register(func:string, handler:AnyFunction):REDIPC;
 	register(func:string|HandlerMap, handler?:AnyFunction):REDIPC {
 		const {call_map} = __REDIPC.get(this)!;
 
@@ -295,11 +297,11 @@ function HandleMessage(this:REDIPC) {
 				if ( typeof id !== "string" ) continue;
 				
 
-				if ( func !== undefined && args !== undefined ) {
+				if ( func !== undefined || args !== undefined ) {
 					await HandleRequest.call(this, result);
 				}
 				else
-				if ( (err !== undefined || res !== undefined) && response_box_id === channel ) {
+				if ( response_box_id === channel ) {
 					await HandleResponse.call(this, result);
 				}
 				else {
