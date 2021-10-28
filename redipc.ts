@@ -12,7 +12,7 @@ interface FlattendPromise<T> {
 	resolve:AnyFunction;
 	reject:AnyFunction;
 };
-interface CallbackTask extends FlattendPromise<any> {
+interface CallbackTask<ReturnType=any> extends FlattendPromise<ReturnType> {
 	id:string;
 	time:number;
 	timeout:null|NodeJS.Timeout;
@@ -186,7 +186,7 @@ export default class REDIPC extends Events.EventEmitter {
 
 		return this;
 	}
-	async remoteCall(channel:string, func:string, ...args:any[]):Promise<any> {
+	async remoteCall<ReturnType=any>(channel:string, func:string, ...args:any[]):Promise<ReturnType> {
 		const {response_box_id, client, task_map, timeout_dur} = __REDIPC.get(this)!;
 		if ( !client ) throw new Error("REDIPC instance is not initialized yet!");
 
@@ -194,7 +194,7 @@ export default class REDIPC extends Events.EventEmitter {
 		const id = TrimId.NEW.toString(32);
 		const timestamp = Date.now();
 
-		const call_job:CallbackTask = Object.assign({id, time:timestamp, timeout:null}, GenPromise<any>());
+		const call_job:CallbackTask<ReturnType> = Object.assign({id, time:timestamp, timeout:null}, GenPromise<ReturnType>());
 		task_map.set(id, call_job);
 
 		await REDISRPush(client, channel, Beson.Serialize({
@@ -402,7 +402,7 @@ function HandleEvent(this:REDIPC, evt_data:REDIPCEvent) {
 
 function GenPromise<T>():FlattendPromise<T> {
 	const p = {} as FlattendPromise<T>;
-	p.promise = new Promise((res, rej)=>{
+	p.promise = new Promise<T>((res, rej)=>{
 		p.resolve=res;
 		p.reject=rej
 	});
