@@ -40,6 +40,7 @@ type REDIPCPrivates = {
 type REDISErrorDescriptor = {
 	code?:string;
 	message?:string;
+	stack_trace?:string[];
 } & AnyObject;
 type HandlerMap = {[func:string]:AnyFunction};
 type REDIPCEvent = {
@@ -59,6 +60,7 @@ export class REDISError extends Error {
 	[key:string]:any;
 	
 	readonly code:string;
+	readonly stack_trace:string[];
 	constructor(err_desc:REDISErrorDescriptor) {
 		if ( Object(err_desc) !== err_desc ) {
 			throw new Error("REDISError constructor accept only errors or error descriptors!");
@@ -78,6 +80,7 @@ export class REDISError extends Error {
 
 
 		this.code = code;
+		this.stack_trace = Array.isArray(err_desc.stack_trace) ? err_desc.stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l=>l.trim()) : []);
 		Object.assign(this, additional);
 	}
 };
@@ -353,6 +356,7 @@ async function HandleRequest(this:REDIPC, result:{id:string, src:string, func:st
 			// @ts-ignore
 			error.code = e.code||'exec-error';
 			error.message = e.message;
+			error.stack_trace = !e.stack ? [] : e.stack.split(/\n|\r\n/).map(l=>l.trim());
 			Object.assign(error, e);
 		}
 		else if ( Object(e) === e ) {

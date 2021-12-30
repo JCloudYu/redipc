@@ -9,6 +9,7 @@ Promise.resolve().then(async()=>{
 
 	console.log("test1 say_hi:", await REDIPC.remoteCall('test1', 'say_hi', 'test1', 1, 2, 3));
 	console.log("test2 say_hi:", await REDIPC.remoteCall('test2', 'say_hi', 'test2', {a:1, b:2, c:3, d:456}));
+	console.log("test3 say_hi2:", await REDIPC.remoteCall('test2', 'say_hi_error').catch(e=>e));
 	REDIPC.on('super_event_back', (event, ...args)=>{
 		console.log("Receiving event:", event, args);
 	});

@@ -16,6 +16,7 @@ declare type REDIPCInitOptions = {
 declare type REDISErrorDescriptor = {
     code?: string;
     message?: string;
+    stack_trace?: string[];
 } & AnyObject;
 declare type HandlerMap = {
     [func: string]: AnyFunction;
@@ -23,6 +24,7 @@ declare type HandlerMap = {
 export declare class REDISError extends Error {
     [key: string]: any;
     readonly code: string;
+    readonly stack_trace: string[];
     constructor(err_desc: REDISErrorDescriptor);
 }
 export declare class REDISTimeoutError extends REDISError {

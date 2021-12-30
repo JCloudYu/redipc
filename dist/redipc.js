@@ -41,6 +41,7 @@ class REDISError extends Error {
         }
         super(message);
         this.code = code;
+        this.stack_trace = Array.isArray(err_desc.stack_trace) ? err_desc.stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l => l.trim()) : []);
         Object.assign(this, additional);
     }
 }
@@ -273,6 +274,7 @@ function HandleRequest(result) {
             if (e instanceof Error) {
                 error.code = e.code || 'exec-error';
                 error.message = e.message;
+                error.stack_trace = !e.stack ? [] : e.stack.split(/\n|\r\n/).map(l => l.trim());
                 Object.assign(error, e);
             }
             else if (Object(e) === e) {
