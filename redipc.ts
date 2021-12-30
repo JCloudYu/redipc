@@ -66,7 +66,7 @@ export class REDISError extends Error {
 			throw new Error("REDISError constructor accept only errors or error descriptors!");
 		}
 
-		let {code, message, ...additional} = err_desc;
+		let {code, message, stack_trace, ...additional} = err_desc;
 		if ( typeof message !== "string" ) {
 			message = "Unkown error";
 		}
@@ -80,7 +80,7 @@ export class REDISError extends Error {
 
 
 		this.code = code;
-		this.stack_trace = Array.isArray(err_desc.stack_trace) ? err_desc.stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l=>l.trim()) : []);
+		this.stack_trace = Array.isArray(stack_trace) ? stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l=>l.trim()) : []);
 		Object.assign(this, additional);
 	}
 };
