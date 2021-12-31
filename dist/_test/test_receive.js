@@ -11,10 +11,18 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const redipc_js_1 = require("../redipc.js");
 Promise.resolve().then(() => __awaiter(void 0, void 0, void 0, function* () {
-    const REDIPC = yield redipc_js_1.default.init({ redis: { uri: 'redis://192.168.3.29:6379/0' }, channels: ['test1', 'test2'], timeout: 5 });
+    const REDIPC = yield redipc_js_1.default.init({
+        silent: true,
+        redis: { uri: 'redis://127.0.0.1:6379/0' },
+        channels: ['test1', 'test2'],
+        timeout: 5
+    });
     console.log("inst_id", REDIPC.id);
-    REDIPC.register('say_hi', (...args) => { console.log("Receiving say_hi:", args); return "Hi!"; });
-    REDIPC.register('say_hi_error', (...args) => { throw new Error("Super error!"); });
+    REDIPC.register('say_hi', (...args) => { console.log("Received say_hi:", args); return "Hi!"; });
+    REDIPC.register('say_hi_error', (...args) => {
+        console.log("Received say_hi_error! Triggering exception...");
+        throw new Error("Super error!");
+    });
     REDIPC.on('super_event', (event, ...args) => __awaiter(void 0, void 0, void 0, function* () {
         console.log("Receiving event:", event, args);
         yield REDIPC.remoteEvent(event.src, 'super_event_back', ...args, 'a', 'b', 'c', 'd', 'e');

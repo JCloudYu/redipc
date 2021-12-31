@@ -8,50 +8,38 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __rest = (this && this.__rest) || function (s, e) {
-    var t = {};
-    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-        t[p] = s[p];
-    if (s != null && typeof Object.getOwnPropertySymbols === "function")
-        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-                t[p[i]] = s[p[i]];
-        }
-    return t;
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REDISTimeoutError = exports.REDISError = void 0;
+exports.REDISTimeoutError = exports.REDIPCError = void 0;
 const Events = require("events");
 const Beson = require("beson");
 const REDIS = require("redis");
 const TrimId = require("trimid");
 ;
 ;
-class REDISError extends Error {
+class REDIPCError extends Error {
     constructor(err_desc) {
         if (Object(err_desc) !== err_desc) {
             throw new Error("REDISError constructor accept only errors or error descriptors!");
         }
-        let { code, message, stack_trace } = err_desc, additional = __rest(err_desc, ["code", "message", "stack_trace"]);
+        let { code, message, callstack, detail } = err_desc;
         if (typeof message !== "string") {
             message = "Unkown error";
         }
-        if (typeof code !== "string") {
-            code = 'unkown-error';
-        }
         super(message);
-        this.code = code;
-        this.stack_trace = Array.isArray(stack_trace) ? stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l => l.trim()) : []);
-        Object.assign(this, additional);
+        this.code = typeof code === 'string' ? code : 'redipc#unkown-error';
+        this.callstack = callstack || this.stack || '';
+        this.detail = detail;
     }
 }
-exports.REDISError = REDISError;
+exports.REDIPCError = REDIPCError;
 ;
-class REDISTimeoutError extends REDISError {
+class REDISTimeoutError extends REDIPCError {
     constructor(msg_id, channel, func, timestamp) {
         super({
             code: 'timeout-error',
-            message: `Request timeout when invoking \`${channel}\`::\`${func}\``
+            message: `Request timeout when invoking \`${channel}\`::\`${func}\``,
+            callstack: '',
+            detail: ''
         });
         this.id = msg_id;
         this.channel = channel;
@@ -193,12 +181,12 @@ class REDIPC extends Events.EventEmitter {
                 const sub_client = _REDIPC.pubsub = _REDIPC.client.duplicate();
                 sub_client.on('message_buffer', (_, data) => {
                     const channel_data = Beson.Deserialize(data);
-                    timeout(() => __awaiter(this, void 0, void 0, function* () {
+                    timeout(() => {
                         if (channel_data !== undefined && channel_data !== null) {
-                            HandleEvent.call(inst, channel_data);
+                            return HandleEvent.call(inst, channel_data);
                         }
-                        yield HandleMessage.call(inst);
-                    }), 0);
+                        return HandleMessage.call(inst);
+                    }, 0);
                 });
                 yield REDISSubscribe(sub_client, channels);
                 setTimeout(() => REDISPublish(client, response_box_id, NULL_BESON), 100);
@@ -251,13 +239,13 @@ function HandleRequest(result) {
             return;
         const handler = call_map.get(func);
         if (!handler) {
-            yield REDISRPush(client, src, Beson.Serialize({
-                id, err: {
-                    code: 'error#func-undefined',
-                    message: `Requested function '${func}' is not defined`,
-                    func
-                }
-            }));
+            const error = {
+                code: 'redipc#func-undefined',
+                message: `Requested function '${func}' is not defined`,
+                callstack: '',
+                detail: { func }
+            };
+            yield REDISRPush(client, src, Beson.Serialize({ id, err: error }));
             yield REDISPublish(client, src, id);
             return;
         }
@@ -270,22 +258,22 @@ function HandleRequest(result) {
             .catch((e) => __awaiter(this, void 0, void 0, function* () {
             if (!silent)
                 console.error(e);
-            const error = {};
-            if (e instanceof Error) {
-                error.code = e.code || 'exec-error';
-                error.message = e.message;
-                error.stack_trace = !e.stack ? [] : e.stack.split(/\n|\r\n/).map(l => l.trim());
-                Object.assign(error, e);
-            }
-            else if (Object(e) === e) {
-                error.code = e.code || 'exec-error';
-                error.message = e.message || 'Unexpected execution error!';
-                Object.assign(error, e);
+            const error = { code: '', message: '', callstack: '' };
+            if (e instanceof Error || Object(e) === e) {
+                const { code, message, callstack, stack, detail } = e;
+                Object.assign(error, e, {
+                    code: code || 'redipc#exec-error',
+                    message: message || 'Unexpected execution error!',
+                    callstack: callstack || stack || '',
+                    detail
+                });
             }
             else {
-                error.code = 'exec-error';
-                error.message = 'Unexpected execution error!';
-                error._detail = e;
+                Object.assign(error, {
+                    code: 'redipc#exec-error',
+                    message: 'Unexpected execution error!',
+                    detail: e
+                });
             }
             yield REDISRPush(client, src, Beson.Serialize({ id, err: error }));
             yield REDISPublish(client, src, id);
@@ -304,7 +292,12 @@ function HandleResponse(result) {
         task.timeout = null;
     }
     const { resolve, reject } = task;
-    err ? reject(new REDISError(err)) : resolve(res);
+    if (err) {
+        reject(new REDIPCError(err));
+    }
+    else {
+        resolve(res);
+    }
 }
 function HandleEvent(evt_data) {
     const { id, src, evt, args } = evt_data;

@@ -2,7 +2,7 @@ import redipc from "../redipc.js";
 
 
 Promise.resolve().then(async()=>{
-	const REDIPC = await redipc.init({redis:{uri:'redis://192.168.3.29:6379/0'}, timeout:10});
+	const REDIPC = await redipc.init({redis:{uri:'redis://127.0.0.1:6379/0'}, timeout:10});
 	console.log("inst_id", REDIPC.id);
 
 	REDIPC.register('hi_back', (...args:any[])=>{ console.log("Receiving hi_back:", args); return "Hi Back!"; });
@@ -16,8 +16,10 @@ Promise.resolve().then(async()=>{
 	await REDIPC.remoteEvent('test1', 'super_event', 1, 2, 3, 4 ,5);
 	
 
+	console.log("Closing connection in 5 sec...");
 	setTimeout(async()=>{
 		await REDIPC.close();
-	}, 1000);
+		console.log("Connection closed! Terminating!");
+	}, 5000);
 })
 .catch((e)=>{console.error("Unexpected error:", e); process.exit(1)});

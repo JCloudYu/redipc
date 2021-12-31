@@ -1,8 +1,5 @@
 /// <reference types="node" />
 import Events = require('events');
-declare type AnyObject = {
-    [key: string]: any;
-};
 declare type AnyFunction = (...args: any[]) => void;
 declare type REDIPCInitOptions = {
     redis: {
@@ -13,21 +10,22 @@ declare type REDIPCInitOptions = {
     timeout?: number;
     silent?: boolean;
 };
-declare type REDISErrorDescriptor = {
-    code?: string;
-    message?: string;
-    stack_trace?: string[];
-} & AnyObject;
+declare type REDIPCErrorLike = {
+    code: string;
+    message: string;
+    callstack: string;
+    detail?: any;
+};
 declare type HandlerMap = {
     [func: string]: AnyFunction;
 };
-export declare class REDISError extends Error {
-    [key: string]: any;
+export declare class REDIPCError extends Error {
     readonly code: string;
-    readonly stack_trace: string[];
-    constructor(err_desc: REDISErrorDescriptor);
+    readonly callstack: string;
+    readonly detail?: any;
+    constructor(err_desc: (Error & Partial<REDIPCErrorLike>) | REDIPCErrorLike);
 }
-export declare class REDISTimeoutError extends REDISError {
+export declare class REDISTimeoutError extends REDIPCError {
     readonly id: string;
     readonly channel: string;
     readonly func: string;

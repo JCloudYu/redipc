@@ -37,11 +37,12 @@ type REDIPCPrivates = {
 	timeout:{(callback:(...args:any[])=>any, delay:number, ...args:any[]):void; clear:()=>any},
 	timeout_dur:number;
 };
-type REDISErrorDescriptor = {
-	code?:string;
-	message?:string;
-	stack_trace?:string[];
-} & AnyObject;
+type REDIPCErrorLike = {
+	code:string;
+	message:string;
+	callstack:string;
+	detail?:any;
+};
 type HandlerMap = {[func:string]:AnyFunction};
 type REDIPCEvent = {
 	id:string;
@@ -56,36 +57,31 @@ type REDIPCEvent = {
 
 
 
-export class REDISError extends Error {
-	[key:string]:any;
-	
+export class REDIPCError extends Error {
 	readonly code:string;
-	readonly stack_trace:string[];
-	constructor(err_desc:REDISErrorDescriptor) {
+	readonly callstack:string;
+	readonly detail?:any;
+	constructor(err_desc:(Error&Partial<REDIPCErrorLike>)|REDIPCErrorLike) {
 		if ( Object(err_desc) !== err_desc ) {
 			throw new Error("REDISError constructor accept only errors or error descriptors!");
 		}
 
-		let {code, message, stack_trace, ...additional} = err_desc;
+		let {code, message, callstack, detail} = err_desc;
 		if ( typeof message !== "string" ) {
 			message = "Unkown error";
-		}
-
-		if ( typeof code !== "string" ) {
-			code = 'unkown-error';
 		}
 		
 		super(message);
 
 
 
-		this.code = code;
-		this.stack_trace = Array.isArray(stack_trace) ? stack_trace : (this.stack ? this.stack.split(/\n|\r\n/).map(l=>l.trim()) : []);
-		Object.assign(this, additional);
+		this.code = typeof code === 'string' ? code : 'redipc#unkown-error';
+		this.callstack = callstack||this.stack||'';
+		this.detail = detail;
 	}
 };
 
-export class REDISTimeoutError extends REDISError {
+export class REDISTimeoutError extends REDIPCError {
 	readonly id:string;
 	readonly channel:string;
 	readonly func:string;
@@ -93,7 +89,9 @@ export class REDISTimeoutError extends REDISError {
 	constructor(msg_id:string, channel:string, func:string, timestamp:number) {
 		super({
 			code:'timeout-error',
-			message: `Request timeout when invoking \`${channel}\`::\`${func}\``
+			message: `Request timeout when invoking \`${channel}\`::\`${func}\``,
+			callstack: '',
+			detail: ''
 		});
 
 		this.id = msg_id;
@@ -256,12 +254,12 @@ export default class REDIPC extends Events.EventEmitter {
 
 			sub_client.on('message_buffer', (_:Buffer, data:Buffer)=>{
 				const channel_data = Beson.Deserialize(data);
-				timeout(async()=>{
+				timeout(()=>{
 					if ( channel_data !== undefined && channel_data !== null ) {
-						HandleEvent.call(inst, channel_data);
+						return HandleEvent.call(inst, channel_data);
 					}
 					
-					await HandleMessage.call(inst);
+					return HandleMessage.call(inst);
 				}, 0);
 			});
 			await REDISSubscribe(sub_client, channels);
@@ -330,13 +328,13 @@ async function HandleRequest(this:REDIPC, result:{id:string, src:string, func:st
 	
 	const handler = call_map.get(func);
 	if ( !handler ) {
-		await REDISRPush(client!, src, Beson.Serialize({
-			id, err: { 
-				code:'error#func-undefined', 
-				message:`Requested function '${func}' is not defined`, 
-				func
-			}
-		}));
+		const error:REDIPCErrorLike = {
+			code:'redipc#func-undefined', 
+			message:`Requested function '${func}' is not defined`, 
+			callstack: '',
+			detail:{func}
+		};
+		await REDISRPush(client!, src, Beson.Serialize({id, err: error}));
 		await REDISPublish(client!, src, id);
 		return;
 	}
@@ -348,26 +346,25 @@ async function HandleRequest(this:REDIPC, result:{id:string, src:string, func:st
 		await REDISRPush(client!, src, Beson.Serialize({id, res:result}));
 		await REDISPublish(client!, src, id);
 	})
-	.catch(async(e)=>{
+	.catch(async(e:REDIPCErrorLike&Error)=>{
 		if ( !silent ) console.error(e);
 
-		const error:AnyObject = {};
-		if ( e instanceof Error ) {
-			// @ts-ignore
-			error.code = e.code||'exec-error';
-			error.message = e.message;
-			error.stack_trace = !e.stack ? [] : e.stack.split(/\n|\r\n/).map(l=>l.trim());
-			Object.assign(error, e);
-		}
-		else if ( Object(e) === e ) {
-			error.code = e.code||'exec-error';
-			error.message = e.message||'Unexpected execution error!';
-			Object.assign(error, e);
+		const error:REDIPCErrorLike = {code:'', message:'', callstack:''};
+		if ( e instanceof Error || Object(e) === e ) {
+			const {code, message, callstack, stack, detail} = e;
+			Object.assign(error, e, {
+				code: code||'redipc#exec-error',
+				message: message||'Unexpected execution error!',
+				callstack: callstack||stack||'',
+				detail
+			});
 		}
 		else {
-			error.code = 'exec-error';
-			error.message = 'Unexpected execution error!';
-			error._detail = e;
+			Object.assign(error, {
+				code: 'redipc#exec-error',
+				message: 'Unexpected execution error!',
+				detail: e
+			});
 		}
 
 
@@ -375,7 +372,7 @@ async function HandleRequest(this:REDIPC, result:{id:string, src:string, func:st
 		await REDISPublish(client!, src, id);
 	});
 }
-function HandleResponse(this:REDIPC, result:{id:string, err:REDISErrorDescriptor, res:any}):void {
+function HandleResponse(this:REDIPC, result:{id:string, err:REDIPCErrorLike, res:any}):void {
 	const {task_map} = __REDIPC.get(this)!;
 	const {id, err, res} = result;
 
@@ -391,7 +388,12 @@ function HandleResponse(this:REDIPC, result:{id:string, err:REDISErrorDescriptor
 	}
 
 	const {resolve, reject} = task;
-	err ? reject(new REDISError(err)) : resolve(res);
+	if ( err ) {
+		reject(new REDIPCError(err))
+	}
+	else {
+		resolve(res);
+	}
 }
 function HandleEvent(this:REDIPC, evt_data:REDIPCEvent) {
 	const {id, src, evt, args} = evt_data;
