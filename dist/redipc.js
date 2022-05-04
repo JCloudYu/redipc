@@ -74,6 +74,7 @@ class REDIPC extends Events.EventEmitter {
             pubsub: null,
             task_map: new Map(),
             call_map: new Map(),
+            incoming_buffer: [],
             channels: [],
             timeout: ThrottledTimeout(),
             timeout_dur: DEFAULT_TIMEOUT_DURATION
@@ -174,19 +175,14 @@ class REDIPC extends Events.EventEmitter {
                     inst.timeout = options.timeout;
                 }
                 const { uri: redis_uri, detect_buffers: _ } = redis;
-                const { timeout, response_box_id } = _REDIPC;
+                const { timeout, response_box_id, incoming_buffer } = _REDIPC;
                 const client = _REDIPC.client = REDIS.createClient({
                     url: redis_uri, detect_buffers: true
                 });
                 const sub_client = _REDIPC.pubsub = _REDIPC.client.duplicate();
                 sub_client.on('message_buffer', (_, data) => {
-                    const channel_data = Beson.Deserialize(data);
-                    timeout(() => {
-                        if (channel_data !== undefined && channel_data !== null) {
-                            return HandleEvent.call(inst, channel_data);
-                        }
-                        return HandleMessage.call(inst);
-                    }, 0);
+                    incoming_buffer.push(data);
+                    timeout(() => ConsumeIncomingBuffer.call(inst), 0);
                 });
                 yield REDISSubscribe(sub_client, channels);
                 setTimeout(() => REDISPublish(client, response_box_id, NULL_BESON), 100);
@@ -197,6 +193,19 @@ class REDIPC extends Events.EventEmitter {
 }
 exports.default = REDIPC;
 ;
+function ConsumeIncomingBuffer() {
+    const { incoming_buffer } = __REDIPC.get(this);
+    const incomings = incoming_buffer.splice(0);
+    for (const data of incomings) {
+        const channel_data = Beson.Deserialize(data);
+        if (channel_data !== undefined && channel_data !== null) {
+            HandleEvent.call(this, channel_data);
+        }
+        else {
+            HandleMessage.call(this);
+        }
+    }
+}
 function HandleMessage() {
     const { client, response_box_id, timeout, channels } = __REDIPC.get(this);
     return Promise.resolve().then(() => __awaiter(this, void 0, void 0, function* () {

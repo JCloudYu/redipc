@@ -33,6 +33,7 @@ type REDIPCPrivates = {
 	pubsub:REDIS.RedisClient|null;
 	task_map:Map<string, CallbackTask>;
 	call_map:Map<string, AnyFunction>;
+	incoming_buffer:Buffer[];
 	channels:string[];
 	timeout:{(callback:(...args:any[])=>any, delay:number, ...args:any[]):void; clear:()=>any},
 	timeout_dur:number;
@@ -130,6 +131,7 @@ export default class REDIPC extends Events.EventEmitter {
 			pubsub:null,
 			task_map:new Map(),
 			call_map:new Map(),
+			incoming_buffer:[],
 			channels:[],
 			timeout: ThrottledTimeout(),
 			timeout_dur: DEFAULT_TIMEOUT_DURATION
@@ -246,21 +248,15 @@ export default class REDIPC extends Events.EventEmitter {
 			}
 
 			const {uri:redis_uri, detect_buffers:_} = redis;
-			const {timeout, response_box_id} = _REDIPC;
+			const {timeout, response_box_id, incoming_buffer} = _REDIPC;
 			const client = _REDIPC.client = REDIS.createClient({
 				url:redis_uri, detect_buffers:true
 			});
 			const sub_client = _REDIPC.pubsub = _REDIPC.client.duplicate();
 
 			sub_client.on('message_buffer', (_:Buffer, data:Buffer)=>{
-				const channel_data = Beson.Deserialize(data);
-				timeout(()=>{
-					if ( channel_data !== undefined && channel_data !== null ) {
-						return HandleEvent.call(inst, channel_data);
-					}
-					
-					return HandleMessage.call(inst);
-				}, 0);
+				incoming_buffer.push(data);
+				timeout(()=>ConsumeIncomingBuffer.call(inst), 0);
 			});
 			await REDISSubscribe(sub_client, channels);
 
@@ -275,6 +271,19 @@ export default class REDIPC extends Events.EventEmitter {
 };
 
 
+function ConsumeIncomingBuffer(this:REDIPC) {
+	const {incoming_buffer} = __REDIPC.get(this)!;
+	const incomings = incoming_buffer.splice(0);
+	for(const data of incomings) {
+		const channel_data = Beson.Deserialize(data);
+		if ( channel_data !== undefined && channel_data !== null ) {
+			HandleEvent.call(this, channel_data);
+		}
+		else {
+			HandleMessage.call(this);
+		}
+	}
+}
 function HandleMessage(this:REDIPC) {
 	const {client, response_box_id, timeout, channels} = __REDIPC.get(this)!;
 
