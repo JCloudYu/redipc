@@ -25,6 +25,7 @@ type REDIPCInitOptions = {
 	channels?: string[];
 	timeout?:number;
 	silent?: boolean;
+	event_only?:boolean;
 };
 type REDIPCPrivates = {
 	silent:boolean;
@@ -166,6 +167,30 @@ export default class REDIPC extends Events.EventEmitter {
 		timeout.clear();
 
 		return Promise.all(promises);
+	}
+	async unbind(channel_id:string|string[]):Promise<void> {
+		const {pubsub, channels} = __REDIPC.get(this)!;
+		if ( !Array.isArray(channel_id) ) channel_id = [channel_id];
+
+		for(const channel of channel_id) {
+			const channel_pos = channels.indexOf(channel);
+			if ( channel_pos < 0 ) continue;
+			
+			await REDISUnsubscribe(pubsub!, channel);
+			channels.splice(channel_pos, 1);
+		}
+	}
+	async bind(channel_id:string|string[]) {
+		const {pubsub, channels} = __REDIPC.get(this)!;
+		if ( !Array.isArray(channel_id) ) channel_id = [channel_id];
+
+		for(const channel of channel_id) {
+			const channel_pos = channels.indexOf(channel);
+			if ( channel_pos >= 0 ) continue;
+			
+			await REDISSubscribe(pubsub!, channel);
+			channels.push(channel);
+		}
 	}
 	register(map:HandlerMap):REDIPC;
 	register(func:string, handler:AnyFunction):REDIPC;
@@ -463,6 +488,13 @@ function ThrottledTimeout():{(callback:(...args:any[])=>any, delay:number, ...ar
 async function REDISSubscribe(client:REDIS.RedisClient, channel:string|string[]):Promise<string> {
 	return new Promise((resolve, reject)=>{
 		client.subscribe(channel, (err, result)=>{
+			err ? reject(err) : resolve(result);
+		});
+	});
+}
+async function REDISUnsubscribe(client:REDIS.RedisClient, channel:string|string[]):Promise<string> {
+	return new Promise((resolve, reject)=>{
+		client.unsubscribe(channel, (err, result)=>{
 			err ? reject(err) : resolve(result);
 		});
 	});

@@ -9,6 +9,7 @@ declare type REDIPCInitOptions = {
     channels?: string[];
     timeout?: number;
     silent?: boolean;
+    event_only?: boolean;
 };
 declare type REDIPCErrorLike = {
     code: string;
@@ -39,6 +40,8 @@ export default class REDIPC extends Events.EventEmitter {
     set timeout(second: number);
     get timeout(): number;
     close(): Promise<any[]>;
+    unbind(channel_id: string | string[]): Promise<void>;
+    bind(channel_id: string | string[]): Promise<void>;
     register(map: HandlerMap): REDIPC;
     register(func: string, handler: AnyFunction): REDIPC;
     remoteCall<ReturnType = any>(channel: string, func: string, ...args: any[]): Promise<ReturnType>;

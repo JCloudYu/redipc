@@ -108,6 +108,34 @@ class REDIPC extends Events.EventEmitter {
             return Promise.all(promises);
         });
     }
+    unbind(channel_id) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { pubsub, channels } = __REDIPC.get(this);
+            if (!Array.isArray(channel_id))
+                channel_id = [channel_id];
+            for (const channel of channel_id) {
+                const channel_pos = channels.indexOf(channel);
+                if (channel_pos < 0)
+                    continue;
+                yield REDISUnsubscribe(pubsub, channel);
+                channels.splice(channel_pos, 1);
+            }
+        });
+    }
+    bind(channel_id) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { pubsub, channels } = __REDIPC.get(this);
+            if (!Array.isArray(channel_id))
+                channel_id = [channel_id];
+            for (const channel of channel_id) {
+                const channel_pos = channels.indexOf(channel);
+                if (channel_pos >= 0)
+                    continue;
+                yield REDISSubscribe(pubsub, channel);
+                channels.push(channel);
+            }
+        });
+    }
     register(func, handler) {
         const { call_map } = __REDIPC.get(this);
         if (typeof func !== "string") {
@@ -356,6 +384,15 @@ function REDISSubscribe(client, channel) {
     return __awaiter(this, void 0, void 0, function* () {
         return new Promise((resolve, reject) => {
             client.subscribe(channel, (err, result) => {
+                err ? reject(err) : resolve(result);
+            });
+        });
+    });
+}
+function REDISUnsubscribe(client, channel) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return new Promise((resolve, reject) => {
+            client.unsubscribe(channel, (err, result) => {
                 err ? reject(err) : resolve(result);
             });
         });

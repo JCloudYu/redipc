@@ -10,15 +10,24 @@ Promise.resolve().then(async()=>{
 	});
 	console.log("inst_id", REDIPC.id);
 
-	REDIPC.register('say_hi', (...args:any[])=>{ console.log("Received say_hi:", args); return "Hi!"; });
+	REDIPC.register('say_hi', async(...args:any[])=>{
+		console.log("Received say_hi:", args); 
+		await REDIPC.bind('_redipc_test_channel_' + Math.floor(Date.now()/86400000));
+		return "Hi!";
+	});
 	REDIPC.register('say_hi_error', (...args:any[])=>{ 
 		console.log("Received say_hi_error! Triggering exception...");
 		throw new Error("Super error!");
 	});
-	REDIPC.on('super_event', async(event, ...args)=>{
+	
+	REDIPC
+	.on('super_event', async(event, ...args)=>{
 		console.log("Receiving event:", event, args);
 		await REDIPC.remoteEvent(event.src, 'super_event_back', ...args, 'a', 'b', 'c', 'd', 'e');
 		console.log("test1 say_hi:", await REDIPC.remoteCall(event.src, 'hi_back', 'hi', 'back', 3, 2, 1));
+	})
+	.on('other_event_from_other_channel', (e, ...args)=>{
+		console.log("Receiving event:", e, args);
 	});
 })
 .catch((e)=>{console.error("Unexpected error:", e); process.exit(1)});
